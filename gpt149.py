@@ -11,7 +11,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch.utils.cpp_extension import load
 from torch.profiler import profile, record_function, ProfilerActivity
-import module_ref as ms
+#import module_ref as ms #comment out when running for the first time
 
 NUM_THREADS=8
 torch.set_num_threads(NUM_THREADS)
@@ -99,17 +99,27 @@ class CustomAttention(nn.Module):
 
 # generates dummy matrices for use in part0 
 def createQKVSimple(N,d,B,H):
-    Q = torch.empty(B,H,N,d)
+    import numpy as np
+    TestQ = np.array(np.zeros((B,H,N,d)),dtype=np.object)
+    TestQ1 = np.array(np.zeros((B,H,N,d)),dtype=np.object)
+    Q = torch.empty(B,H,N,d)  #//b, h, i, j: x,y,z,b, sizeX=H, sizeY=N, sizeZ=d
     K = torch.empty(B,H,d,N)
     V = torch.empty(B,H,N,d)
     for b in range(B):
-        for h in range(H):
-            for i in range(N):
-                for j in range(d):
-                    Q[b][h][i][j] = 0.0002 * i + 0.0001 * j
+        for h in range(H): #x
+            for i in range(N): #y
+                for j in range(d): #z 
+                   # TestQ[b][h][i][j] = str((b,h,i,j))+'='+str(H*N*d*h + d*N*i + d*j + b) 
+                    TestQ[b][h][i][j] = ' '+str(i)+' d'+str(j)+' = '+str(H*N*d*b + d*N*h + d*i + j)
+                   # TestQ1[b][h][i][j] = 'N:'+str(b)+' d:'+str(h)+' = '+str(H*N*d*h + d*N*i + d*j + b)
+                    Q[b][h][i][j] = H*N*d*b + d*N*h + d*i + j #0.0002 * i + 0.0001 * j # H*N*d*h + d*N*i + d*j + b  === (H)*(N)*(d)*x + (d)*(N)*y + (d)*z + b
                     K[b][h][j][i] = 0.0006 * i + 0.0003 * j
                     V[b][h][i][j] = 0.00015 * i + 0.0008 * j
     K=K.transpose(-2,-1)
+    print(TestQ)
+  #  print('----') 
+    print('batches and heads for N=0, d=0:')
+    print(TestQ[:][:][0][0])
     return Q,K,V
 
 
@@ -245,7 +255,8 @@ def part4Test(N, d, B, H, bc, br):
     testTemplate(attentionModuleReference.myFlashAttention, params, "STUDENT - FLASH ATTENTION")
 
 def accessTest(B, H, N, d):
-    Q,_ ,_ = createQKVSimple(N,d,B,H)
+    Q,_ ,_ = createQKVSimple(N,d,B,H) #createQKVSimple(N,d,B,H):#  Q = torch.empty(B,H,N,d)
+    print('Q dims', B,H,N,d, Q.shape)
     print("\nTensor Shape:", Q.size())
     print("\n4D Tensor Contents:\n", Q)
     b = random.randrange(B)
@@ -254,7 +265,9 @@ def accessTest(B, H, N, d):
     j = random.randrange(d)
     print("\nIndexing Value When: x = " + str(b) + ", y = " + str(h) + ", z = " + str(i) + ", b = " + str(j))
     expected = round(Q[b][h][i][j].item(), 6)
-    result = round(mr.fourDimRead(Q.flatten().tolist(), b, h, i, j, H, N, d), 6)
+    # fourDimRead(std::vector<float> &tensor, int &x, int &y, int &z, int &b,const int &sizeX, const int &sizeY, const int &sizeZ)
+    #I think this is wrong:result = round(mr.fourDimRead(Q.flatten().tolist(), b, h, i, j, H, N, d), 6) #x,y,z,b, sizeX, sizeY, sizeZ
+    result = round(mr.fourDimRead(Q.flatten().tolist(), i, j, h, b, N, d, H), 6) 
     print("Expected:", expected)
     print("Result:", result)
     assert abs(expected - result) < 1e-5
@@ -304,7 +317,9 @@ def main():
         elif args.testname == "part4":
             part4Test(N, d, B, H, int(args.bc), int(args.br))
         elif args.testname == "4Daccess":
-            accessTest(1, 2, 4, 4)
+            #MMaccessTest(1, 2, 4, 4)
+            print('B,H,N,d = ',2,2,4,4) #x = " + str(b) + ", y = " + str(h) + ", z = " + str(i) + ", b = 
+            accessTest(2,2,3,3) #MMtest another batch
         else:
             print("Unknown test name: %s" % args.testname)
     else:
